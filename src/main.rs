@@ -12,7 +12,7 @@ fn main() {
                 for _ in 0..2 {
                     let mut buf = [u8::default()];
                     stream.read(&mut buf).unwrap();
-                    stream.write_all(b"+PONG\r\n").unwrap();
+                    stream.write(b"+PONG\r\n").unwrap();
                 }
             }
             Err(e) => {
