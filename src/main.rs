@@ -9,11 +9,14 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
-                stream.write(b"+PONG\r\n").unwrap();
-
                 loop {
                     let mut buf = [u8::default()];
-                    stream.read(&mut buf).unwrap();
+                    let n = stream.read(&mut buf).unwrap();
+
+                    if n == 0 {
+                        break;
+                    }
+
                     stream.write(b"+PONG\r\n").unwrap();
                 }
             }
