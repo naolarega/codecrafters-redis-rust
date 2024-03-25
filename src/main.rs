@@ -10,7 +10,7 @@ fn main() {
         match stream {
             Ok(mut stream) => {
                 loop {
-                    let mut buf = [u8::default(), 512];
+                    let mut buf = [u8::default(); 512];
                     let n = stream.read(&mut buf).unwrap();
 
                     if n == 0 {
