@@ -33,21 +33,21 @@ impl ThreadWrapper {
             thread::Builder::new()
                 .name(format!("Redis thread {}", self.thread_number))
                 .spawn(move || loop {
-                    let (mtx, cvar) = &*task_added;
-                    let mut added = mtx.lock().unwrap();
-
-                    while !*added {
+                    if (&*task_queue).lock().unwrap().len() == 0 {
+                        let (mtx, cvar) = &*task_added;
+                        let mut added = mtx.lock().unwrap();
+                        
                         added = cvar.wait(added).unwrap();
                     }
 
-                    if let Ok(mut task_queue) = (&*task_queue).lock() {
-                        if let Some(task) = task_queue.pop() {
-                            *(&*occupied).lock().unwrap() = true;
+                    if let Some(task) = (&*task_queue).lock().unwrap().pop() {
+                        *(&*occupied).lock().unwrap() = true;
+                        
+                        task();
+                    }
 
-                            task();
-
-                            *(&*occupied).lock().unwrap() = false;
-                        }
+                    if (&*task_queue).lock().unwrap().len() == 0 {
+                        *(&*occupied).lock().unwrap() = false;
                     }
                 })
                 .unwrap(),
@@ -116,7 +116,7 @@ impl ThreadPoolExecutor {
                     .threads
                     .iter_mut()
                     .min_by(|a, b| a.task_queue_size().cmp(&b.task_queue_size()))
-                {
+                {   
                     least_occupied_thread.set_task(task);
                 } else {
                     self.threads.first_mut().unwrap().set_task(task);
