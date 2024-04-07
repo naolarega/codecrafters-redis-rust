@@ -36,7 +36,7 @@ impl ThreadWrapper {
                     if (&*task_queue).lock().unwrap().is_empty() {
                         let (mtx, cvar) = &*task_added;
                         let added = mtx.lock().unwrap();
-                        
+
                         cvar.wait(added).unwrap();
                     }
 
