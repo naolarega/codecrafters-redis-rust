@@ -92,6 +92,7 @@ impl ThreadWrapper {
 pub struct ThreadPoolExecutor {
     thread_count: usize,
     threads: Vec<ThreadWrapper>,
+    dead_thread_numbers: Vec<usize>,
 }
 
 impl ThreadPoolExecutor {
@@ -99,6 +100,7 @@ impl ThreadPoolExecutor {
         Self {
             thread_count: Self::cpu_count(),
             threads: Vec::new(),
+            dead_thread_numbers: Vec::new(),
         }
     }
 
@@ -106,7 +108,7 @@ impl ThreadPoolExecutor {
     where
         T: FnOnce() + Send + 'static,
     {
-        let evicted_thread_numbers = self.evict_dead_threads();
+        self.evict_dead_threads();
 
         let free_thread = self
             .threads
@@ -119,10 +121,10 @@ impl ThreadPoolExecutor {
             if self.threads.len() < self.thread_count {
                 let thread_number;
 
-                if evicted_thread_numbers.is_empty() {
+                if self.dead_thread_numbers.is_empty() {
                     thread_number = self.threads.len()
                 } else {
-                    thread_number = evicted_thread_numbers.first().unwrap().to_owned();
+                    thread_number = self.dead_thread_numbers.first().unwrap().to_owned();
                 }
 
                 let mut thread_wrapper = ThreadWrapper::new(thread_number);
@@ -145,20 +147,17 @@ impl ThreadPoolExecutor {
         }
     }
 
-    fn evict_dead_threads(&mut self) -> Vec<usize> {
-        let dead_thread_numbers = self
-            .threads
-            .iter()
-            .filter_map(|thread_wrapper| {
+    fn evict_dead_threads(&mut self) {
+        self.dead_thread_numbers
+            .extend(self.threads.iter().filter_map(|thread_wrapper| {
                 if !thread_wrapper.is_live() {
                     Some(thread_wrapper.thread_number)
                 } else {
                     None
                 }
-            })
-            .collect::<Vec<usize>>();
+            }));
 
-        for thread_number in dead_thread_numbers.iter() {
+        for thread_number in self.dead_thread_numbers.iter() {
             if let Some(index) =
                 self.threads
                     .iter()
@@ -174,8 +173,6 @@ impl ThreadPoolExecutor {
                 self.threads.remove(index);
             }
         }
-
-        dead_thread_numbers
     }
 
     fn cpu_count() -> usize {

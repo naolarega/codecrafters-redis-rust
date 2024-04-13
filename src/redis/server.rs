@@ -4,6 +4,9 @@ use std::{
 };
 
 use crate::executor::ThreadPoolExecutor;
+use crate::redis::resp::RESPDataTypes;
+
+use super::commands::RedisCommand;
 
 pub struct Redis {
     host: &'static str,
@@ -42,14 +45,10 @@ impl Redis {
 
     fn handle(mut stream: TcpStream) {
         loop {
-            let mut buf = [u8::default(); 512];
-            let n = stream.read(&mut buf).unwrap();
+            let request = RESPDataTypes::from(&mut stream);
+            let mut command = RedisCommand::from(request);
 
-            if n == 0 {
-                break;
-            }
-
-            stream.write(b"+PONG\r\n").unwrap();
+            command.respond(&mut stream);
         }
     }
 }
