@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeSet, HashMap},
-    io::{BufRead, BufReader, Read},
+    io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
 };
 
@@ -58,6 +58,27 @@ impl RESPDataTypes {
             b"*" => resp_parser.parse_array(),
             _ => Ok(RESPDataTypes::Null),
         }
+    }
+
+    pub fn write<T>(&self, buffer: &mut T)
+    where
+        T: Write,
+    {
+        use RESPDataTypes::*;
+
+        match self {
+            SimpleString(value) => buffer.write(format!("+{value}\r\n").as_bytes()).unwrap(),
+            SimpleError(value) => buffer.write(format!("-{value}\r\n").as_bytes()).unwrap(),
+            BulkString(value) => buffer
+                .write(format!("${}\r\n{value}\r\n", value.len()).as_bytes())
+                .unwrap(),
+            BulkError(value) => buffer
+                .write(format!("!{}\r\n{value}\r\n", value.len()).as_bytes())
+                .unwrap(),
+            _ => buffer.write(b"-Error\r\n").unwrap(),
+        };
+
+        buffer.flush().unwrap()
     }
 }
 

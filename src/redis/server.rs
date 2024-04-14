@@ -56,6 +56,8 @@ impl Redis {
                 Err(error) => {
                     if let RESPDataTypes::Null = error {
                         return;
+                    } else if let RESPDataTypes::BulkError(_) = error {
+                        error.write(&mut stream);
                     }
                 }
             }

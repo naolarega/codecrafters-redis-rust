@@ -9,7 +9,8 @@ macro_rules! redis_err {
 }
 
 pub enum RedisCommand {
-    Echo { message: String },
+    PING { message: Option<String> },
+    ECHO { message: String },
 }
 
 impl TryFrom<RESPDataTypes> for RedisCommand {
@@ -51,9 +52,18 @@ impl TryFrom<RESPDataTypes> for RedisCommand {
         }
 
         match command.to_lowercase().as_str() {
+            "ping" => {
+                if let Some(message) = args.first() {
+                    Ok(RedisCommand::PING {
+                        message: Some(message.to_owned()),
+                    })
+                } else {
+                    redis_err!("message not provided for echo command")
+                }
+            }
             "echo" => {
                 if let Some(message) = args.first() {
-                    Ok(RedisCommand::Echo {
+                    Ok(RedisCommand::ECHO {
                         message: message.to_owned(),
                     })
                 } else {
@@ -73,10 +83,15 @@ impl RedisCommand {
         use RedisCommand::*;
 
         match self {
-            Echo { message } => stream
-                .write(format!("${}\r\n{message}\r\n", message.len()).as_bytes())
-                .unwrap(),
-            _ => stream.write(b"!5\r\nerror\r\n").unwrap(),
+            PING { message } => {
+                if let Some(message) = message {
+                    RESPDataTypes::BulkString(message.to_owned()).write(stream);
+                } else {
+                    RESPDataTypes::SimpleString("PONG".to_string()).write(stream);
+                }
+            }
+            ECHO { message } => RESPDataTypes::BulkString(message.to_owned()).write(stream),
+            _ => RESPDataTypes::BulkError("error".to_string()).write(stream),
         };
 
         stream.flush().unwrap();
@@ -112,11 +127,11 @@ mod tests {
         let redis_command = RedisCommand::try_from(raw_request!("echo", ["Hello World!"]));
 
         assert!(match redis_command {
-            Ok(RedisCommand::Echo { message: _ }) => true,
+            Ok(RedisCommand::ECHO { message: _ }) => true,
             _ => false,
         });
 
-        if let Ok(RedisCommand::Echo { message }) = redis_command {
+        if let Ok(RedisCommand::ECHO { message }) = redis_command {
             assert_eq!(message, String::from("Hello World!"));
         }
     }
