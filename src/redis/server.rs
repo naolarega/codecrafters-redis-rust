@@ -49,7 +49,10 @@ impl Redis {
                 Ok(request) => {
                     let mut command = match RedisCommand::try_from(request) {
                         Ok(command) => command,
-                        Err(_) => panic!("something went wrong"),
+                        Err(error) => {
+                            error.write(&mut stream);
+                            return;
+                        }
                     };
                     command.respond(&mut stream);
                 }

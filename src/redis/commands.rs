@@ -53,13 +53,13 @@ impl TryFrom<RESPDataTypes> for RedisCommand {
 
         match command.to_lowercase().as_str() {
             "ping" => {
-                if let Some(message) = args.first() {
-                    Ok(RedisCommand::PING {
-                        message: Some(message.to_owned()),
-                    })
-                } else {
-                    redis_err!("message not provided for echo command")
+                let mut message = None;
+
+                if let Some(arg) = args.first() {
+                    message = Some(arg.to_owned());
                 }
+
+                Ok(RedisCommand::PING { message })
             }
             "echo" => {
                 if let Some(message) = args.first() {
