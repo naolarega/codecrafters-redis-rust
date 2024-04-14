@@ -1,12 +1,12 @@
 use std::{
-    io::{self, Read, Write},
+    io::{self, Write},
     net::{TcpListener, TcpStream},
 };
 
-use crate::executor::ThreadPoolExecutor;
-use crate::redis::resp::RESPDataTypes;
-
-use super::commands::RedisCommand;
+use crate::{
+    executor::ThreadPoolExecutor,
+    redis::{commands::RedisCommand, resp::RESPDataTypes},
+};
 
 pub struct Redis {
     host: &'static str,
@@ -43,6 +43,11 @@ impl Redis {
         Ok(())
     }
 
+    fn respond_error(error: RESPDataTypes, stream: &mut TcpStream) {
+        stream.write(error.serialize().as_bytes()).unwrap();
+        stream.flush().unwrap();
+    }
+
     fn handle(mut stream: TcpStream) {
         loop {
             match RESPDataTypes::try_from(&stream) {
@@ -50,7 +55,7 @@ impl Redis {
                     let mut command = match RedisCommand::try_from(request) {
                         Ok(command) => command,
                         Err(error) => {
-                            error.write(&mut stream);
+                            Self::respond_error(error, &mut stream);
                             return;
                         }
                     };
@@ -60,7 +65,7 @@ impl Redis {
                     if let RESPDataTypes::Null = error {
                         return;
                     } else if let RESPDataTypes::BulkError(_) = error {
-                        error.write(&mut stream);
+                        Self::respond_error(error, &mut stream);
                     }
                 }
             }

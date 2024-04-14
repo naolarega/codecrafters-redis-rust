@@ -26,7 +26,7 @@ impl TryFrom<&TcpStream> for RESPDataTypes {
     type Error = RESPDataTypes;
 
     fn try_from(value: &TcpStream) -> Result<Self, Self::Error> {
-        Self::from(value)
+        Self::deserialize(value)
     }
 }
 
@@ -34,12 +34,12 @@ impl TryFrom<&[u8]> for RESPDataTypes {
     type Error = RESPDataTypes;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        Self::from(value)
+        Self::deserialize(value)
     }
 }
 
 impl RESPDataTypes {
-    fn from<T>(value: T) -> Result<RESPDataTypes, RESPDataTypes>
+    fn deserialize<T>(value: T) -> Result<RESPDataTypes, RESPDataTypes>
     where
         T: Read,
     {
@@ -60,25 +60,16 @@ impl RESPDataTypes {
         }
     }
 
-    pub fn write<T>(&self, buffer: &mut T)
-    where
-        T: Write,
-    {
+    pub fn serialize(&self) -> String {
         use RESPDataTypes::*;
 
         match self {
-            SimpleString(value) => buffer.write(format!("+{value}\r\n").as_bytes()).unwrap(),
-            SimpleError(value) => buffer.write(format!("-{value}\r\n").as_bytes()).unwrap(),
-            BulkString(value) => buffer
-                .write(format!("${}\r\n{value}\r\n", value.len()).as_bytes())
-                .unwrap(),
-            BulkError(value) => buffer
-                .write(format!("!{}\r\n{value}\r\n", value.len()).as_bytes())
-                .unwrap(),
-            _ => buffer.write(b"-Error\r\n").unwrap(),
-        };
-
-        buffer.flush().unwrap()
+            SimpleString(value) => format!("+{value}\r\n"),
+            SimpleError(value) => format!("-{value}\r\n"),
+            BulkString(value) => format!("${}\r\n{value}\r\n", value.len()),
+            BulkError(value) => format!("!{}\r\n{value}\r\n", value.len()),
+            _ => "-Error\r\n".to_string(),
+        }
     }
 }
 

@@ -82,18 +82,19 @@ impl RedisCommand {
     {
         use RedisCommand::*;
 
-        match self {
+        let response = match self {
             PING { message } => {
                 if let Some(message) = message {
-                    RESPDataTypes::BulkString(message.to_owned()).write(stream);
+                    RESPDataTypes::BulkString(message.to_owned())
                 } else {
-                    RESPDataTypes::SimpleString("PONG".to_string()).write(stream);
+                    RESPDataTypes::SimpleString("PONG".to_string())
                 }
             }
-            ECHO { message } => RESPDataTypes::BulkString(message.to_owned()).write(stream),
-            _ => RESPDataTypes::BulkError("error".to_string()).write(stream),
+            ECHO { message } => RESPDataTypes::BulkString(message.to_owned()),
+            _ => RESPDataTypes::BulkError("error".to_string()),
         };
 
+        stream.write(response.serialize().as_bytes()).unwrap();
         stream.flush().unwrap();
     }
 }
