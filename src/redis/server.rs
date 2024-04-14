@@ -45,10 +45,20 @@ impl Redis {
 
     fn handle(mut stream: TcpStream) {
         loop {
-            let request = RESPDataTypes::from(&mut stream);
-            let mut command = RedisCommand::from(request);
-
-            command.respond(&mut stream);
+            match RESPDataTypes::try_from(&stream) {
+                Ok(request) => {
+                    let mut command = match RedisCommand::try_from(request) {
+                        Ok(command) => command,
+                        Err(_) => panic!("something went wrong"),
+                    };
+                    command.respond(&mut stream);
+                }
+                Err(error) => {
+                    if let RESPDataTypes::Null = error {
+                        return;
+                    }
+                }
+            }
         }
     }
 }

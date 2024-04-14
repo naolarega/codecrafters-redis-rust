@@ -1,8 +1,10 @@
 use std::{
     collections::{BTreeSet, HashMap},
     io::{BufRead, BufReader, Read},
+    net::TcpStream,
 };
 
+#[derive(Debug)]
 pub enum RESPDataTypes {
     SimpleString(String),
     SimpleError(String),
@@ -20,17 +22,33 @@ pub enum RESPDataTypes {
     Push(Vec<RESPDataTypes>),
 }
 
-impl<T> From<T> for RESPDataTypes
-where
-    T: Read,
-{
-    fn from(value: T) -> Self {
+impl TryFrom<&TcpStream> for RESPDataTypes {
+    type Error = RESPDataTypes;
+
+    fn try_from(value: &TcpStream) -> Result<Self, Self::Error> {
+        Self::from(value)
+    }
+}
+
+impl TryFrom<&[u8]> for RESPDataTypes {
+    type Error = RESPDataTypes;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        Self::from(value)
+    }
+}
+
+impl RESPDataTypes {
+    fn from<T>(value: T) -> Result<RESPDataTypes, RESPDataTypes>
+    where
+        T: Read,
+    {
         let mut resp_buffer_reader = BufReader::new(value);
         let mut data_type_marker = [u8::default()];
 
-        resp_buffer_reader
-            .read_exact(&mut data_type_marker)
-            .unwrap();
+        if resp_buffer_reader.read(&mut data_type_marker).unwrap() == 0 {
+            return Err(RESPDataTypes::Null);
+        }
 
         let mut resp_parser = RESPParser::new(resp_buffer_reader);
 
@@ -38,7 +56,7 @@ where
             b"+" => resp_parser.parse_simple_string(),
             b"$" => resp_parser.parse_bulk_string(),
             b"*" => resp_parser.parse_array(),
-            _ => RESPDataTypes::Null,
+            _ => Ok(RESPDataTypes::Null),
         }
     }
 }
@@ -58,24 +76,24 @@ where
         Self { resp_buffer_reader }
     }
 
-    fn parse_simple_string(&mut self) -> RESPDataTypes {
+    fn parse_simple_string(&mut self) -> Result<RESPDataTypes, RESPDataTypes> {
         let mut simple_string = String::new();
 
         self.resp_buffer_reader
             .read_line(&mut simple_string)
             .unwrap();
 
-        RESPDataTypes::SimpleString(
+        Ok(RESPDataTypes::SimpleString(
             simple_string
                 .strip_prefix("+")
                 .unwrap()
                 .strip_suffix("\r\n")
                 .unwrap()
                 .to_owned(),
-        )
+        ))
     }
 
-    fn parse_bulk_string(&mut self) -> RESPDataTypes {
+    fn parse_bulk_string(&mut self) -> Result<RESPDataTypes, RESPDataTypes> {
         let mut length = String::new();
 
         self.resp_buffer_reader.read_line(&mut length).unwrap();
@@ -97,21 +115,27 @@ where
             .read_exact(&mut bulk_string)
             .unwrap();
 
-        RESPDataTypes::BulkString(String::from_utf8(bulk_string).unwrap())
+        Ok(RESPDataTypes::BulkString(
+            String::from_utf8(bulk_string).unwrap(),
+        ))
     }
 
-    fn parse_array(&mut self) -> RESPDataTypes {
+    fn parse_array(&mut self) -> Result<RESPDataTypes, RESPDataTypes> {
         let mut length = String::new();
 
         self.resp_buffer_reader.read_line(&mut length).unwrap();
 
-        let length = length
-            .strip_prefix("*")
-            .unwrap()
-            .strip_suffix("\r\n")
-            .unwrap()
-            .parse::<usize>()
-            .unwrap();
+        let length = if let Some(striped_string) = length.strip_prefix("*") {
+            striped_string
+        } else {
+            &length
+        };
+        let length = if let Some(striped_string) = length.strip_suffix("\r\n") {
+            striped_string
+        } else {
+            &length
+        };
+        let length = length.parse::<usize>().unwrap();
         let mut elements = Vec::<RESPDataTypes>::new();
 
         for _ in 0..length {
@@ -123,10 +147,10 @@ where
             self.resp_buffer_reader
                 .read_line(&mut element_buffer)
                 .unwrap();
-            elements.push(RESPDataTypes::from(element_buffer.as_bytes()));
+            elements.push(RESPDataTypes::try_from(element_buffer.as_bytes())?);
         }
 
-        RESPDataTypes::Array(elements)
+        Ok(RESPDataTypes::Array(elements))
     }
 }
 
@@ -139,7 +163,7 @@ mod tests {
     #[test]
     fn simple_string() {
         assert!(match create_parser("+OK\r\n").parse_simple_string() {
-            SimpleString(string) if &string == "OK" => true,
+            Ok(SimpleString(string)) if &string == "OK" => true,
             _ => false,
         });
     }
@@ -147,7 +171,7 @@ mod tests {
     #[test]
     fn bulk_string() {
         assert!(match create_parser("$5\r\nhello\r\n").parse_bulk_string() {
-            BulkString(string) if &string == "hello" => true,
+            Ok(BulkString(string)) if &string == "hello" => true,
             _ => false,
         });
     }
@@ -156,13 +180,13 @@ mod tests {
     fn array() {
         let parsed_array = create_parser("*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n").parse_array();
 
-        assert!(if let Array(_) = parsed_array {
+        assert!(if let Ok(Array(_)) = parsed_array {
             true
         } else {
             false
         });
 
-        if let Array(mut elements) = parsed_array {
+        if let Ok(Array(mut elements)) = parsed_array {
             assert_eq!(elements.len(), 2);
 
             assert!(if let Some(BulkString(ref string)) = elements.pop() {
