@@ -9,7 +9,7 @@ pub enum RESPDataTypes {
     SimpleString(String),
     SimpleError(String),
     Integer(i64),
-    BulkString(String),
+    BulkString(Option<String>),
     Array(Vec<RESPDataTypes>),
     Null,
     Boolean(bool),
@@ -66,7 +66,14 @@ impl RESPDataTypes {
         match self {
             SimpleString(value) => format!("+{value}\r\n"),
             SimpleError(value) => format!("-{value}\r\n"),
-            BulkString(value) => format!("${}\r\n{value}\r\n", value.len()),
+            BulkString(value) => {
+                if let Some(value) = value {
+                    format!("${}\r\n{value}\r\n", value.len())
+                } else {
+                    "-1\r\n".to_string()
+                }
+            }
+            Null => "_\r\n".to_string(),
             BulkError(value) => format!("!{}\r\n{value}\r\n", value.len()),
             _ => "-Error\r\n".to_string(),
         }
@@ -127,9 +134,9 @@ where
             .read_exact(&mut bulk_string)
             .unwrap();
 
-        Ok(RESPDataTypes::BulkString(
+        Ok(RESPDataTypes::BulkString(Some(
             String::from_utf8(bulk_string).unwrap(),
-        ))
+        )))
     }
 
     fn parse_array(&mut self) -> Result<RESPDataTypes, RESPDataTypes> {
@@ -183,7 +190,7 @@ mod tests {
     #[test]
     fn bulk_string() {
         assert!(match create_parser("$5\r\nhello\r\n").parse_bulk_string() {
-            Ok(BulkString(string)) if &string == "hello" => true,
+            Ok(BulkString(Some(string))) if &string == "hello" => true,
             _ => false,
         });
     }
@@ -198,10 +205,16 @@ mod tests {
             false
         });
 
-        if let Ok(Array(mut elements)) = parsed_array {
-            assert_eq!(elements.len(), 2);
+        let mut elements = if let Ok(Array(mut elements)) = parsed_array {
+            elements
+        } else {
+            panic!("");
+        };
 
-            assert!(if let Some(BulkString(ref string)) = elements.pop() {
+        assert_eq!(elements.len(), 2);
+
+        assert!(if let Some(BulkString(ref string)) = elements.pop() {
+            if let Some(string) = string {
                 if string == "world" {
                     true
                 } else {
@@ -209,9 +222,13 @@ mod tests {
                 }
             } else {
                 false
-            });
+            }
+        } else {
+            false
+        });
 
-            assert!(if let Some(BulkString(ref string)) = elements.pop() {
+        assert!(if let Some(BulkString(ref string)) = elements.pop() {
+            if let Some(string) = string {
                 if string == "hello" {
                     true
                 } else {
@@ -219,8 +236,10 @@ mod tests {
                 }
             } else {
                 false
-            });
-        }
+            }
+        } else {
+            false
+        });
     }
 
     fn create_parser(data: &str) -> RESPParser<&[u8]> {
